@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Sheets Auth Integration</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f7f9fc; color: #333; }
+        .container { max-width: 900px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        h1, h2 { color: #2c3e50; }
+        .grid-container { display: grid; grid-template-columns: 1fr 2fr; gap: 30px; }
+        @media (max-width: 768px) { .grid-container { grid-template-columns: 1fr; } }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; }
+        input, select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #d1d9e6; border-radius: 6px; font-size: 14px; transition: border-color 0.2s; }
+        input:focus, select:focus { border-color: #3498db; outline: none; }
+        button { padding: 12px 20px; background: #3498db; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; width: 100%; transition: background 0.2s; }
+        button:hover { background: #2980b9; }
+        button.btn-secondary { background: #ecf0f1; color: #2c3e50; width: auto; margin-bottom: 15px; }
+        button.btn-secondary:hover { background: #dfe6e9; }
+        #message { margin-top: 15px; padding: 12px; border-radius: 6px; display: none; font-size: 14px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        table, th, td { border: 1px solid #e9ecef; }
+        th, td { padding: 12px; text-align: left; }
+        th { background: #f8f9fa; color: #495057; font-weight: 600; }
+        tr:nth-child(even) { background-color: #f8f9fa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Google Sheets Auth System</h1>
+        
+        <div class="grid-container">
+            <!-- Registration Form Area -->
+            <div>
+                <h2>Register User</h2>
+                <form id="registerForm">
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" placeholder="user@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" placeholder="Min. 6 characters" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="role">Role</label>
+                        <select id="role" name="role" required>
+                            <option value="">Select a Role</option>
+                            <option value="Admin">Admin</option>
+                            <option value="Manager">Manager</option>
+                            <option value="Editor">Editor</option>
+                            <option value="Viewer">Viewer</option>
+                        </select>
+                    </div>
+                    <button type="submit">Create User</button>
+                    <div id="message"></div>
+                </form>
+            </div>
+
+            <!-- Users Display Area -->
+            <div>
+                <h2>Registered Users</h2>
+                <button class="btn-secondary" onclick="fetchUsers()">Refresh List</button>
+                <div style="overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Created At (UTC)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <tr><td colspan="3" style="text-align: center; color: #6c757d;">Loading users...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const role = document.getElementById('role').value;
+            
+            const messageDiv = document.getElementById('message');
+            messageDiv.style.display = 'block';
+            messageDiv.className = '';
+            messageDiv.textContent = 'Processing request...';
+
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email, password: password, role: role })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    messageDiv.className = 'success';
+                    // Never undefined display handling
+                    messageDiv.textContent = data.message ? data.message : 'User registered successfully!';
+                    document.getElementById('registerForm').reset();
+                    fetchUsers();
+                } else {
+                    messageDiv.className = 'error';
+                    // Handle validation errors from FastAPI (HTTP 422) specifically
+                    if (response.status === 422) {
+                        messageDiv.textContent = 'Validation error. Please verify the provided information is correct.';
+                    } else if (data && data.detail) {
+                        messageDiv.textContent = typeof data.detail === 'string' ? data.detail : 'An error occurred during registration.';
+                    } else {
+                        messageDiv.textContent = 'Registration failed due to a server error.';
+                    }
+                }
+            } catch (error) {
+                messageDiv.className = 'error';
+                messageDiv.textContent = 'Network error occurred while attempting to communicate with the server.';
+                console.error('Fetch error:', error);
+            }
+        });
+
+        async function fetchUsers() {
+            const tableBody = document.getElementById('usersTableBody');
+            tableBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #6c757d;">Loading users...</td></tr>';
+            
+            try {
+                const response = await fetch('/api/users');
+                const data = await response.json();
+                
+                tableBody.innerHTML = '';
+                
+                if (response.ok) {
+                    // Make sure data.users is not undefined before iterating
+                    const usersList = data.users || [];
+                    
+                    if (usersList.length > 0) {
+                        usersList.forEach(user => {
+                            const row = document.createElement('tr');
+                            // Fallback to "N/A" if any property is undefined to prevent showing "undefined"
+                            const userEmail = (user && user.email) ? user.email : 'N/A';
+                            const userRole = (user && user.role) ? user.role : 'N/A';
+                            const userCreated = (user && user.created_at) ? user.created_at : 'N/A';
+                            
+                            // Formatting the datetime a bit clearer if it's an ISO format
+                            let formattedDate = userCreated;
+                            if (userCreated !== 'N/A') {
+                                try {
+                                    const d = new Date(userCreated);
+                                    if (!isNaN(d.getTime())) {
+                                        formattedDate = d.toLocaleString();
+                                    }
+                                } catch(e) {}
+                            }
+
+                            row.innerHTML = `
+                                <td>${userEmail}</td>
+                                <td><span style="background: #e9ecef; padding: 3px 8px; border-radius: 12px; font-size: 12px; color: #495057;">${userRole}</span></td>
+                                <td style="color: #6c757d; font-size: 13px;">${formattedDate}</td>
+                            `;
+                            tableBody.appendChild(row);
+                        });
+                    } else {
+                        tableBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #6c757d;">No users found in database.</td></tr>';
+                    }
+                } else {
+                    const errorMsg = (data && data.detail) ? (typeof data.detail === 'string' ? data.detail : 'Server error') : 'Server error';
+                    tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #dc3545;">Error fetching users: ${errorMsg}</td></tr>`;
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+                tableBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #dc3545;">Network error. Cannot reach backend API.</td></tr>';
+            }
+        }
+
+        // Initialize table on load
+        fetchUsers();
+    </script>
+</body>
+</html>
